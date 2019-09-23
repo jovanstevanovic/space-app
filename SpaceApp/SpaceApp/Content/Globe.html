@@ -1,0 +1,695 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Launches</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!--===============================================================================================-->
+    <link href="https://fonts.googleapis.com/css?family=Montserrat:400,700" rel="stylesheet">
+    <!--===============================================================================================-->
+    <link rel="icon" type="image/png" href="images/icons/rocket-logo-3.jpg" />
+    <!--===============================================================================================-->
+    <!--===============================================================================================-->
+    <link rel="stylesheet" type="text/css" href="fonts/font-awesome-4.7.0/css/font-awesome.min.css">
+    <!--===============================================================================================-->
+    <link rel="stylesheet" type="text/css" href="fonts/themify/themify-icons.css">
+    <!--===============================================================================================-->
+    <link rel="stylesheet" type="text/css" href="vendor/animate/animate.css">
+    <!--===============================================================================================-->
+    <link rel="stylesheet" type="text/css" href="vendor/css-hamburgers/hamburgers.min.css">
+    <!--===============================================================================================-->
+    <link rel="stylesheet" type="text/css" href="vendor/animsition/css/animsition.min.css">
+    <!--===============================================================================================-->
+    <link rel="stylesheet" type="text/css" href="vendor/select2/select2.min.css">
+    <!--===============================================================================================-->
+    
+    <!--===============================================================================================-->
+    <link rel="stylesheet" type="text/css" href="vendor/slick/slick.css">
+    <!--===============================================================================================-->
+    <link rel="stylesheet" type="text/css" href="vendor/lightbox2/css/lightbox.min.css">
+    <!--===============================================================================================-->
+    <link rel="stylesheet" type="text/css" href="css/util.css">
+    <link rel="stylesheet" type="text/css" href="css/main.css">
+    <!--===============================================================================================-->
+    <script src="../Scripts/jquery-1.10.2.min.js"></script>
+    <script src="../Scripts/bootstrap.min.js"></script>
+    <script src="../Scripts/bootstrap-datepicker.min.js"></script>
+    <script src="apiGet.js"></script>
+    <script src="../Scripts/bootstrap-slider.min.js"></script>
+    <!-- Use correct character set. -->
+    <meta charset="utf-8">
+    <!-- Tell IE to use the latest, best version. -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <!-- Make the application on mobile take up the full browser screen and disable user scaling. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no">
+    <title>Hello World!</title>
+    <script src="cesium/Build/Cesium/Cesium.js"></script>
+    <style>
+        @import url(cesium/Build/Cesium/Widgets/widgets.css);
+        @import url(bootstrap.css);
+
+        .cesium-viewer-bottom {
+            display: none;
+        }
+        #menu{
+            position:absolute;
+            top:100px;
+            right:0px;
+        }
+        .menu-sidebar{
+            background-color:black;
+            color:white;
+        }
+        html, body, #cesiumContainer {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .slider-horizontal {
+            height: 10px;
+        }
+
+        .cesium-viewer-toolbar {
+            left: 5px;
+            top:120px;
+        }
+
+        .cesium-infoBox {
+            left: 5px;
+            top: 160px;
+        }
+        .sidebar{
+            width:25%;
+            padding-top:120px;
+            z-index:50;
+            background-color:black;
+            opacity:0.8;
+        }
+        .btn-hide-sidebar{
+            top:120px;
+            color:white;
+            position:absolute;
+            right:0px;
+        }
+        header{
+            z-index:100;
+        }
+        .wrap-menu-header{
+            border-top:0px;
+        }
+        .btn-show-sidebar{
+            position:absolute;
+            right:10px;
+        }
+        .cesium-baseLayerPicker-dropDown{
+            position:absolute;
+            left:5px;
+        }
+        #loading{
+            position:absolute;
+            right:20px;
+            display:none;
+        }
+
+        aside .txt5{
+            color:white;
+        }
+        aside .txt4 {
+            color: white;
+        }
+        aside .m-b-20 {
+            color: white;
+        }
+        .rocketimg{
+            max-height:160px;
+            object-fit:cover;
+        }
+
+    </style>
+    <script>
+        var viewer = null;
+        function refreshLaunches()
+        {
+            loadingStart();
+            var from = $("#datefrom").val();
+            var to = $("#dateto").val();
+            getLaunchesForDateRange(from, to, drawLaunches);
+        }
+        function loadingStart()
+        {
+            $("#loading").show();
+        }
+        function loadingStop()
+        {
+            $("#loading").hide();
+        }
+        function lll(lon, lat, height, T)
+        {
+            V = Math.sqrt(6.67 * 5.97 * Math.pow(10, 13) / (6371 * 1000 + height));
+            var W = V / 6371 / 1000 / 3.141592 * 180;
+            curlon = lon + W * T;
+            curlat = lat + W * T;
+            return [curlon, curlat];
+        }
+        function angleFromCoordinate(lat1, long1, lat2,
+            long2)
+        {
+
+            dLon = (long2 - long1);
+
+            y = Math.sin(dLon) * Math.cos(lat2);
+            x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1)
+                * Math.cos(lat2) * Math.cos(dLon);
+
+            brng = Math.atan2(y, x);
+            brng = brng / 3.141592 * 180;
+            brng = (brng + 360) % 360;
+            brng = 360 - brng; // count degrees counter-clockwise - remove to make clockwise
+
+            return brng;
+        }
+
+        function getOrbitThrough(long, lat)
+        {
+            var bestP = null;
+            var bestD = 1000000000000;
+            var bid = 0;
+            var bestIncl;
+            for (var inclination = -90; inclination < 90; inclination += 1)
+            {
+                var parogee = 400000;
+                var appogee = 400000;
+                var loan = 0;
+                var argument_of_periapsis = 80;
+                var coords = Cesium.Cartesian3.fromDegreesArrayHeights([long, lat, 0]);
+                var mD = 1000000000000;
+                var mi;
+
+                var semi_major = parogee + appogee / 2;
+
+                var e = 0;
+
+                // altitude for minor vertix
+                var semi_minor = semi_major * Math.sqrt(1 - Math.pow(e, 2));
+
+                var inclination_m = Cesium.Matrix3.fromRotationY(-1 * Cesium.Math.toRadians(inclination));
+
+                var raan_m = Cesium.Matrix3.fromRotationZ(Cesium.Math.toRadians(loan));
+
+                var aop_m = Cesium.Matrix3.fromRotationZ(Cesium.Math.toRadians(argument_of_periapsis));
+
+                var positions = [];
+
+                for (var i = -180; i <= 180; i += 1)
+                {
+                    //r = a(1-e^2)/ 1+e\cos \theta}
+                    var radius = semi_major * (1 - Math.pow(e, 2)) / (1 + e * Math.cos(Cesium.Math.toRadians(i)));
+
+                    //create point
+                    var p = new Cesium.Cartesian3.fromDegrees(i - 90, 0, radius);
+
+                    //rotate around earth Y axis to apply inclination
+                    var rotated = Cesium.Matrix3.multiplyByVector(inclination_m, p, new Cesium.Cartesian3());
+
+                    //rotate around earth Z to apply RAAN
+                    var raan = Cesium.Matrix3.multiplyByVector(raan_m, rotated, new Cesium.Cartesian3());
+
+                    //rotate around orbit plane Z to apply AOP
+                    //transform to local orbit plane
+                    //??????
+                    var final = Cesium.Matrix3.multiplyByVector(aop_m, raan, new Cesium.Cartesian3());
+
+                    var D = Cesium.Cartesian3.distance(coords[0], final);
+                    if (D < mD)
+                    {
+                        mD = D;
+                        mi = i;
+                    }
+                    positions.push(final);
+                }
+                if (mD < bestD)
+                {
+                    bestP = positions;
+                    bestD = mD;
+                    bestIncl = inclination;
+                    bid = mi;
+                }
+            }
+
+            var inclination = bestIncl;
+            var parogee = 400000;
+            var appogee = 400000;
+            var loan = 0;
+            var argument_of_periapsis = 80;
+            var coords = Cesium.Cartesian3.fromDegreesArrayHeights([long, lat, 0]);
+            var dr = 0;
+            var mD = 1000000000000;
+            var mi;
+
+            var semi_major = parogee + appogee / 2;
+
+            var e = 0;
+
+            // altitude for minor vertix
+            var semi_minor = semi_major * Math.sqrt(1 - Math.pow(e, 2));
+
+            var inclination_m = Cesium.Matrix3.fromRotationY(-1 * Cesium.Math.toRadians(inclination));
+
+            var raan_m = Cesium.Matrix3.fromRotationZ(Cesium.Math.toRadians(loan));
+
+            var aop_m = Cesium.Matrix3.fromRotationZ(Cesium.Math.toRadians(argument_of_periapsis));
+
+            var positions = [];
+            var dr = 5;
+            for (var i = bid; i < 180; i += 1)
+            {
+                //r = a(1-e^2)/ 1+e\cos \theta}
+                var radius = semi_major * (1 - Math.pow(e, 2)) / (1 + e * Math.cos(Cesium.Math.toRadians(i)));
+                if (dr == 5)
+                {
+                    dr = -radius;
+                }
+                else
+                {
+                    dr += 20000;
+                }
+                if (dr > 0) dr = 0;
+                //create point
+                var p = new Cesium.Cartesian3.fromDegrees(i - 90, 0, radius + dr);
+
+                //rotate around earth Y axis to apply inclination
+                var rotated = Cesium.Matrix3.multiplyByVector(inclination_m, p, new Cesium.Cartesian3());
+
+                //rotate around earth Z to apply RAAN
+                var raan = Cesium.Matrix3.multiplyByVector(raan_m, rotated, new Cesium.Cartesian3());
+
+                //rotate around orbit plane Z to apply AOP
+                //transform to local orbit plane
+                //??????
+                var final = Cesium.Matrix3.multiplyByVector(aop_m, raan, new Cesium.Cartesian3());
+                positions.push(final);
+            }
+            for (var i = -180; i < bid - 30; i += 1)
+            {
+                if (dr < 0) dr += 20000;
+                if (dr > 0) dr = 0;
+                //r = a(1-e^2)/ 1+e\cos \theta}
+                var radius = semi_major * (1 - Math.pow(e, 2)) / (1 + e * Math.cos(Cesium.Math.toRadians(i)));
+                //create point
+                var p = new Cesium.Cartesian3.fromDegrees(i - 90, 0, radius + dr);
+
+                //rotate around earth Y axis to apply inclination
+                var rotated = Cesium.Matrix3.multiplyByVector(inclination_m, p, new Cesium.Cartesian3());
+
+                //rotate around earth Z to apply RAAN
+                var raan = Cesium.Matrix3.multiplyByVector(raan_m, rotated, new Cesium.Cartesian3());
+
+                //rotate around orbit plane Z to apply AOP
+                //transform to local orbit plane
+                //??????
+                var final = Cesium.Matrix3.multiplyByVector(aop_m, raan, new Cesium.Cartesian3());
+                positions.push(final);
+            }
+            return positions;
+
+        }
+        var orbit = null;
+        var oldPath = null;
+        function drawPath(long, lat)
+        {
+            var positions = getOrbitThrough(long, lat);
+            if (oldPath != null)
+            {
+                viewer.entities.remove(oldPath);
+            }
+            var entity = viewer.entities.add({
+                polyline: {
+                    positions: positions,
+                    followSurface: true,
+                    width: 4,
+                    material: Cesium.Color.RED
+                }
+            });
+            oldPath = entity;
+        }
+
+        var pads = {};
+
+        function drawLaunches(launches)
+        {
+            viewer.entities.removeAll();
+            pads = {};
+            for (launch in launches)
+            {
+                var title = $("#titletext").val().toUpperCase();
+                launch = launches[launch];
+                if (title.length > 0 && launch.name.toUpperCase().indexOf(title) == -1) continue;
+                for (pad in launch.location.pads)
+                {
+                    pad = launch.location.pads[pad];
+                    if (pads[pad.id])
+                    {
+                        pads[pad.id].launches.push(launch);
+                    }
+                    else
+                    {
+                        pads[pad.id] = pad;
+                        pads[pad.id].launches = [launch];
+                    }
+                }
+            }
+            for (pad in pads)
+            {
+                pad = pads[pad];
+                var lat = pad.latitude;
+                var long = pad.longitude;
+                var entity = viewer.entities.add({
+                    position: Cesium.Cartesian3.fromDegrees(long, lat),
+                    id: "Launchpad: " + pad.name,
+                    model: {
+                        uri: 'rocket_red.glb',
+                        minimumPixelSize: 40
+                    }
+                });
+            }
+            loadingStop();
+        }
+        function pickEntity(windowPosition)
+        {
+            var picked = viewer.scene.pick(windowPosition);
+            if (defined(picked))
+            {
+                var id = Cesium.defaultValue(picked.id, picked.primitive.id);
+                if (id instanceof Cesium.Entity)
+                {
+                    return id;
+                }
+            }
+            return undefined;
+        };
+        function padSelected(padId)
+        {
+            var selectedPad = null;
+            for (pad in pads)
+            {
+                pad = pads[pad];
+                if (pad.name == padId)
+                {
+                    selectedPad = pad;
+                }
+            }
+            $("#launchlist").html("");
+            for (launch in selectedPad.launches)
+            {
+                launch = selectedPad.launches[launch];
+                launch.location = null;
+                var launchJson = JSON.stringify(launch);
+                launchJson = encodeURIComponent(launchJson);
+                if (launch.rocket.hasOwnProperty('imageURL')) {
+                    $("#launchlist").append(`<div class="row">\
+                    <div class= "col-md-12 p-t-30" >\
+                    <div class="blo1">\
+                        <div class="wrap-pic-blo1 bo-rad-10 hov-img-zoom">\
+                            <a href="${launch.rocket.imageURL}" target="_blank"><img class="rocketimg" src="${launch.rocket.imageURL}" alt="IMG - INTRO"></a>\
+                            </div>\
+
+                            <div class="wrap-text-blo1 p-t-35">\
+                                <a href="LaunchDetails.html#${launchJson}" target="_blank">\
+                                    <h4 class="txt5 color0-hov trans-0-4 m-b-13">\
+                                        ${launch.name}\
+                                    </h4>\
+                                </a>\
+                                <span class="txt31">${launch.net}</span><br/>\
+
+                                <a href="LaunchDetails.html#${launchJson} " class="txt4" target="_blank">\
+                                    Show details\
+                                    <i class="fa fa-long-arrow-right m-l-10" aria-hidden="true"></i>\
+                                </a>\
+                                <br />\
+                                <a href="#" class="txt4" onclick="showPath(${selectedPad.id})" >\
+                                    Show flight path\
+                                    <i class="fa fa-rocket m-l-10" aria-hidden="true"></i>\
+                                </a>\
+                            </div>\
+                        </div>\
+                    </div>\
+                </div >`);
+                }
+                else {
+                    $("#launchlist").append(`<div class="row">\
+                    <div class= "col-md-12 p-t-30" >\
+                    <div class="blo1">\
+
+
+                            <div class="wrap-text-blo1 p-t-35">\
+                                <a href="LaunchDetails.html#${launchJson}" target="_blank">\
+                                    <h4 class="txt5 color0-hov trans-0-4 m-b-13">\
+                                        ${launch.name}\
+                                    </h4>\
+                                </a>\
+                                <span class="txt31">${launch.net}</span><br/>\
+
+                                <a href="LaunchDetails.html#${launchJson} " class="txt4" target="_blank">\
+                                    Show details\
+                                    <i class="fa fa-long-arrow-right m-l-10" aria-hidden="true"></i>\
+                                </a>\
+                                <br />\
+                                <a href="#" class="txt4" onclick="showPath(${selectedPad.id})" >\
+                                    Show flight path\
+                                    <i class="fa fa-rocket m-l-10" aria-hidden="true"></i>\
+                                </a>\
+                            </div>\
+                        </div>\
+                    </div>\
+                </div >`);
+                }
+            }
+        }
+        function showSidebar()
+        {
+            $(".sidebar").addClass('show-sidebar');
+
+        }
+        function hideSidebar()
+        {
+            $(".sidebar").removeClass('show-sidebar');
+        }
+        function showPath(padId)
+        {
+            pad = pads[padId];
+            drawPath(pad.longitude, pad.latitude);
+        }
+        $(document).ready(function ()
+        {
+            $(".datepicker").datepicker({ format: "yyyy-mm-dd", startDate: "01.01.1950." }).on("hide", function ()
+            {
+                refreshLaunches();
+            });
+            $("#datefrom").datepicker("setDate", "now");
+            $("#dateto").datepicker("setDate", "+5d");
+        });
+        setTimeout(function ()
+        {
+            refreshLaunches();
+
+            var handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+            handler.setInputAction(function (click)
+            {
+                var alertText = '';
+                function addToMessage(key, value)
+                {
+                    alertText += key + ': ' + value + '\n';
+                }
+
+                var pickedObject = viewer.scene.pick(click.position);
+                if (Cesium.defined(pickedObject))
+                {
+                    if (pickedObject.id.id.indexOf("Launchpad:") == 0)
+                    {
+                        padSelected(pickedObject.id.id.substr(11));
+                    }
+                }
+            }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+            $(".btn-show-sidebar").on('click', function ()
+            {
+                console.log("A");
+                if ($(".show-sidebar").length > 0)
+                {
+                    console.log("B");
+                    $(".sidebar").removeClass('show-sidebar');
+                }
+                else
+                {
+                    console.log("C");
+                    $(".sidebar").addClass('show-sidebar');
+                }
+            });
+
+        }, 1000);
+    </script>
+</head>
+<body>
+    <aside class="sidebar show-sidebar trans-0-4">
+        <section class="section-booking">
+            <div class="container">
+                <div class="row">
+                    <div class="col-lg-12 p-b-30">
+                        <form action="#" class="wrap-form-booking" onsubmit="return false;">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <!-- Date -->
+                                    <span class="txt9" style="color:white">
+                                        Date from
+                                    </span>
+
+                                    <div class="pos-relative txt10 size12 bo2 bo-rad-10 m-t-3 m-b-23">
+                                        <input class="datepicker bo-rad-10 sizefull txt10 p-l-20" type="text" id="datefrom">
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <!-- Date -->
+                                    <span class="txt9" style="color:white">
+                                        Date to
+                                    </span>
+
+                                    <div class="wrap-inputdate pos-relative txt10 size12 bo2 bo-rad-10 m-t-3 m-b-23">
+                                        <input class="datepicker bo-rad-10 sizefull txt10 p-l-20" type="text" id="dateto">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <!-- Title -->
+                                    <span class="txt9" style="color:white">
+                                        Title
+                                    </span>
+
+                                    <div class="wrap-inputname size12 bo2 bo-rad-10 m-t-3 m-b-23">
+                                        <input class="bo-rad-10 sizefull txt10 p-l-20" type="text" name="name" id="titletext" placeholder="Title">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="wrap-btn-booking flex-c-m m-t-6">
+                                <!-- Button3 -->
+                                <button onclick="refreshLaunches()" class="btn3 flex-c-m size13 txt11 trans-0-4">
+                                    Search
+                                </button>
+                                <img src="loading.gif" id="loading" style="margin-left:10px"/>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="content-intro bg-black p-b-133">
+            <div class="container" id="launchlist">
+
+            </div>
+        </div>
+    </aside>
+    <header>
+        <!-- Header desktop -->
+        <div class="wrap-menu-header gradient1 trans-0-4">
+            <div class="container h-full">
+                <div class="wrap_header trans-0-3">
+                    <!-- Logo -->
+                    <div class="logo">
+                        <a href="index.html">
+                            <img src="images/icons/rocket-logo-3.jpg" alt="IMG-LOGO" data-logofixed="images/icons/rocket-logo-3.jpg">
+                        </a>
+                    </div>
+
+                    <!-- Menu -->
+                    <div class="wrap_menu p-l-45 p-l-0-xl">
+                        <nav class="menu">
+                            <ul class="main_menu">
+                                <li>
+                                    <a href="index.html">Home</a>
+                                </li>
+
+                                <li>
+                                    <a href="Globe.html">Launches</a>
+                                </li>
+
+                                <li>
+                                    <a href="launchspots.html">Launchspots</a>
+                                </li>
+
+                                <li>
+                                    <a href="blog.html">Blog</a>
+                                </li>
+
+                                <li>
+                                    <a href="about.html">About</a>
+                                </li>
+
+                                <li>
+                                    <a href="contact.html">Contact</a>
+                                </li>
+                            </ul>
+                        </nav>
+                    </div>
+
+                    <!-- Social -->
+                    <div class="social flex-w flex-l-m p-r-20">
+                        <a href="#"><i class="fa fa-instagram" aria-hidden="true"></i></a>
+                        <a href="#"><i class="fa fa-facebook m-l-21" aria-hidden="true"></i></a>
+                        <a href="#"><i class="fa fa-twitter m-l-21" aria-hidden="true"></i></a>
+
+                        <button class="btn-show-sidebar m-l-33 trans-0-4"></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+    <div id="cesiumContainer" style="width:100%;float:left"></div>
+    <!--<div id="menu" style="float:right;width:20%;">
+        From date:<br />
+        <input type="datetime" class="form-control datepicker" id="datefrom" /><br />
+        To date:<br />
+        <input type="datetime" class="form-control datepicker" id="dateto" />
+        <div id="launchlist"></div>
+    </div>-->-->
+    <script>
+        viewer = new Cesium.Viewer('cesiumContainer', {
+            timeline: false,
+            animation: false,
+            homeButton: false,
+            navigationHelpButton: false,
+            geocoder: false
+
+        });
+    </script>
+    <!--===============================================================================================-->
+    <!--===============================================================================================-->
+    <script type="text/javascript" src="vendor/animsition/js/animsition.min.js"></script>
+    <!--===============================================================================================-->
+    <script type="text/javascript" src="vendor/bootstrap/js/popper.js"></script>
+    <!--===============================================================================================-->
+    <script type="text/javascript" src="vendor/select2/select2.min.js"></script>
+    <!--===============================================================================================-->
+    
+    <!--===============================================================================================-->
+    <script type="text/javascript" src="vendor/slick/slick.min.js"></script>
+    <script type="text/javascript" src="js/slick-custom.js"></script>
+    <!--===============================================================================================-->
+    <script type="text/javascript" src="vendor/parallax100/parallax100.js"></script>
+    <script type="text/javascript">
+        $('.parallax100').parallax100();
+    </script>
+    <!--===============================================================================================-->
+    <script type="text/javascript" src="vendor/countdowntime/countdowntime.js"></script>
+    <!--===============================================================================================-->
+    <script type="text/javascript" src="vendor/lightbox2/js/lightbox.min.js"></script>
+    <!--===============================================================================================-->
+    <script type="text/javascript" src="vendor/isotope/isotope.pkgd.min.js"></script>
+    <!--===============================================================================================-->
+    <script src="js/main.js"></script>
+</body>
+
+</html>
